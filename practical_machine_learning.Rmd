@@ -1,0 +1,76 @@
+---
+title: "Practical Machine Learning: Prediction Assignment Writeup"
+author: "Soumya Patra"
+date: "2 March 2017"
+output: html_document
+---
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement. A group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har.
+
+## Summary
+The goal of the project is to predict the manner in which the exercises were performed. This is the "classe" variable in the training set. We will other variables in the dataset to predict the "classe" variable. In the following sections, we describe how we built your model, how we used cross validation, what we think the expected out of sample error is. We will also use your prediction model to predict 20 different test cases.
+
+## Preprocessing Data
+We start with loading the training and test datasets. We can see below that traiining dataset has 19622 records with 160 columns and test dataset has 20 records with the same amount of columns. 
+```{r}
+trainingData <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("", "NA", "NULL"))
+dim(trainingData)
+testData <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("", "NA", "NULL"))
+dim(testData)
+```
+
+In our datasets, there are a number of columns which are not useful for us. In this step, we find such columns and remove from our dataset. First we find all the columns which have NA values and remove them form the training dataset. Further investigation on the remaining columns show that we still have columns which might not be useful to us in the prediction. Some of the columns are *X* which is the sequence number per record and some time related columns like *user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp*. So we don't consider them while building the model. We are left with 55 predictor variables.
+```{r}
+nas <- sapply(trainingData, function(column) any(is.na(column)))
+trainingData <- trainingData[, nas == FALSE]
+rem <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp")
+trainingData <- trainingData[,!(names(trainingData) %in% rem)]
+dim(trainingData)
+```
+
+After preprocessing the data, we split the data into training and test sets considering *classe* column as the outcome. For this project, we choose to have 70% data for the training set and hence 30% data is considered as test set.
+
+```{r}
+library(caret)
+set.seed(93425)
+train <- createDataPartition(trainingData$classe, p=0.7, list=FALSE)
+trainingSet <- trainingData[train,]
+testingSet <- trainingData[-train,]
+dim(trainingSet)
+dim(testingSet)
+```
+
+## Predictive Modelling
+
+We start with creating a decision tree model. When we use the model with the testing set, we get an accuracy of only 74%. Therefore we don't consider this as our final model. We can see the decision tree in the plot shown below.
+```{r}
+library(rpart)
+library(rpart.plot)
+set.seed(93425)
+treeModel <- rpart(classe ~ ., data=trainingSet, method="class")
+predictTree <- predict(treeModel, newdata=testingSet, type="class")
+confusionMatrix(predictTree, testingSet$classe)
+prp(treeModel)
+```
+
+We build our second mdel using Random Forest. We perform some basic parameter tuning with 5 fold cross validation. After building the model using random forest, when we apply the model to the test set, we get 99.7% accuracy. We get an error estimate of 0.23 with this model. This is a pretty good outcome, hence we use this model as our final model and use it for the validation. In the plot, we can see various trees created by the model and their corresponding errors.
+
+```{r}
+library(randomForest)
+set.seed(93425)
+fitControl <- trainControl(method = "cv", number=5)
+randomForest <- train(classe ~ ., data=trainingSet, method="rf", trControl=fitControl)
+randomForest$finalModel
+prediction <- predict(randomForest, newdata=testingSet)
+confusionMatrix(prediction, testingSet$classe)
+plot(randomForest$finalModel)
+```
+
+## Conclusion
+Being an ensemble learning method, Random forest model provides a highly accurate model to us. Therefore, we use this model to predict the 20 observations given in the validation test data. We find that the model is correctly able to predict all the 20 observations for us.
+
+```{r}
+predictValidation <- predict(randomForest, newdata=testData)
+predictValidation
+```
+
